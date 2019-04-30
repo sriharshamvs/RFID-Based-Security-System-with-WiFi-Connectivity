@@ -1,0 +1,6 @@
+".\Objects\main.obj",
+".\Objects\OLED.obj",
+".\Objects\SERIAL.obj",
+".\Objects\MFRC522.obj" 
+TO ".\Objects\RFIDandESP" 
+PRINT(".\Listings\RFIDandESP.m51") RAMSIZE(256) 
