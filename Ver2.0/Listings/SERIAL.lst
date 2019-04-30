@@ -1,0 +1,113 @@
+C51 COMPILER V9.54   SERIAL                                                                04/30/2019 09:54:10 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE SERIAL
+OBJECT MODULE PLACED IN .\Objects\SERIAL.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE SERIAL.c LARGE OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listi
+                    -ngs\SERIAL.lst) TABS(2) OBJECT(.\Objects\SERIAL.obj)
+
+line level    source
+
+   1          #include <MPCx58AP.h>
+   2          #include "SERIAL.h"
+   3          #include "string.h"
+   4          
+   5          unsigned int count=0;
+   6          
+   7          /*void SERIAL_INIT(void){
+   8            TMOD&=0xCF; 
+   9            TMOD|=0x20; 
+  10            TH1=0xFA;   // setting buadrate to 9600 bps
+  11            TL1=0x00;
+  12            TR1=1;
+  13            SCON=0x50;
+  14            EA=1;
+  15            ES = 1;
+  16          }*/
+  17          
+  18          void SERIAL_INIT(void){
+  19   1        SCON=0x50;
+  20   1        PCON |=0X80;
+  21   1        TMOD&=0xCF; 
+  22   1        TMOD|=0x20; 
+  23   1        TH1=0xFF;   // setting buadrate to 115200 bps
+  24   1        TL1=0x00;
+  25   1        TR1=1;
+  26   1        REN=1;
+  27   1        ES = 1;
+  28   1      } // SERIAL_INIT ends here
+  29          
+  30          void TIMER_INIT(void){
+  31   1        TMOD=0x00;
+  32   1        IE=0x00;
+  33   1        TR0=0;
+  34   1        TF0=0;
+  35   1        TMOD|=0x01;
+  36   1        IE|=0x82;
+  37   1        TH0=0xF8;   // setting 1ms timer
+  38   1        TL0=0xCD;
+  39   1        TR0=1;
+  40   1      } // TIMER_INIT ends here
+  41          
+  42            // interrupt 1 ends here
+  43          
+  44          void SERIAL_TRANSMIT(unsigned char tx_char){  // For sending each character
+  45   1        SBUF=tx_char;  //Store the incoming character in SUBF
+  46   1        while(TI==0);  // Wait until Tx bit is High
+  47   1        TI=0;   // Make it 0 once it's high
+  48   1      }
+  49          
+  50          void SERIAL_STRING_TX(unsigned char *tx_String){   // For sending a String
+  51   1        unsigned int i,stringSize;
+  52   1        unsigned char temp_char=0;
+  53   1        
+  54   1        stringSize = strlen(tx_String); // Calculate the String length
+C51 COMPILER V9.54   SERIAL                                                                04/30/2019 09:54:10 PAGE 2   
+
+  55   1        for(i=0;i<stringSize;i++){
+  56   2          temp_char = tx_String[i];  
+  57   2          SERIAL_TRANSMIT(temp_char);  // Send each character to the SERIAL_TRANSMIT function
+  58   2        }
+  59   1      }
+  60          
+  61          void SERIAL_STRING_TX_LN(unsigned char *tx_String){   // For sending a String
+  62   1        unsigned int i,stringSize;
+  63   1        unsigned char temp_char=0;
+  64   1        
+  65   1        stringSize = strlen(tx_String); // Calculate the String length
+  66   1        for(i=0;i<stringSize;i++){
+  67   2          temp_char = tx_String[i];  
+  68   2          SERIAL_TRANSMIT(temp_char);  // Send each character to the SERIAL_TRANSMIT function
+  69   2        }
+  70   1        SERIAL_TRANSMIT('\r');
+  71   1        SERIAL_TRANSMIT('\n');
+  72   1      }
+  73          
+  74          /*
+  75          void isr_UART(void) interrupt 4 using 1{
+  76            unsigned char i;
+  77            if(TI){
+  78              TI=0;
+  79              for(i=0;i<4;i++){
+  80                SBUF=UID[i];
+  81                while(!TI);
+  82                TI=0;     
+  83              }
+  84              REN=1;
+  85            }
+  86          } 
+  87          */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    220    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      2      12
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

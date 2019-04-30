@@ -1,0 +1,454 @@
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c LARGE OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listing
+                    -s\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "MPCx58AP.h"
+   2          #include "mfrc522.h"
+   3          #include "SERIAL.h"
+   4          #include "OLED.h"
+   5          #include <string.h>
+   6          
+   7          #define RXBUFFSIZE  20
+   8          #define RXBUFFSIZE  20
+   9          #define WiFiReset   P3_2
+  10          
+  11          #define RELAY   P2_7
+  12          #define HIGH    1
+  13          #define LOW     0
+  14          
+  15          void InitializeSystem(void);  
+  16          void FeedBackDelay(void);
+  17          void InitializeSystem(void);
+  18          void ReadCard(void);
+  19          void HEXtoBYTE(unsigned char c);
+  20          void delayPCD(void);
+  21          
+  22          void DELAY_1(unsigned int delayCount);
+  23          void CONNECT_TO_WIFI(unsigned char* , unsigned char*);
+  24          void SendDatatToCloud(unsigned char *uploadData);
+  25          void WiFiInit(void);
+  26          void Comparecard();
+  27          
+  28          bit powerON=0;
+  29          bit exit = 0;
+  30          bit readyFLAG=0;
+  31          bit processFLAG=0;
+  32          bit TwoSecFLAG=0;
+  33          
+  34          unsigned char Temp[4],UID2[4]= 0,UID1[4],UID3[4];
+  35          static unsigned char HEXcount=0;
+  36          
+  37          static unsigned char rxBytes=0;
+  38          static unsigned int TimerCount=0;
+  39          unsigned char Response[20];
+  40          const char* SSID = "Startrek";
+  41          const char* PWD = "Face fade12#";
+  42          unsigned char RECIEVEbuffer[RXBUFFSIZE+1];
+  43          unsigned char workingBUFFER[RXBUFFSIZE];
+  44          unsigned char ipBuffer[20]=0;
+  45          unsigned char step=0;
+  46          unsigned char MATCHED=0;
+  47          unsigned char MEMBER=0;
+  48          
+  49          char status=0;
+  50          
+  51          const char READY_CONDITION[] =  {"ready"};
+  52          const char OK[] = {"OK"};
+  53          const char CIFSR_STAIP[] = {"+CIFSR:STAIP,"};
+  54          
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 2   
+
+  55          unsigned char UploadDataToCloud[]={"GET /update?key=RJ4ZCZX8AV7V1XRL&field1="};
+  56          
+  57          unsigned char CARD1[4]={0x74,0xBE,0xF2,0x66};
+  58          unsigned char CARD2[4]={0xB7,0xE5,0xDC,0xE1}; 
+  59          unsigned char CARD3[4]={0x37,0x84,0xF1,0xE1};
+  60          unsigned char CARD4[4]={0x07,0xAB,0xAF,0xBF};
+  61          unsigned char tempUID[4]=0;
+  62          
+  63          void main(void){  
+  64   1        unsigned char forcount=0;
+  65   1        P0=0x00;
+  66   1        P1=0x00;
+  67   1        P2=0x00;
+  68   1        UID2[0] = 1;      // to make UDI1[0] not equal 
+  69   1        InitializeSystem();
+  70   1        OLED_Clear();
+  71   1        OLED_SetCursor(1,0);  //Set cursor at 1st-line 0th-Position
+  72   1        OLED_DisplayString("Place Card       ");  
+  73   1        OLED_SetCursor(2,0);
+  74   1        OLED_DisplayString("Door Closed   ");
+  75   1        while(1){
+  76   2          ReadCard(); 
+  77   2          Comparecard();    
+  78   2          for(forcount=0;forcount<4;forcount++) {
+  79   3            UID3[forcount]=UID1[forcount];
+  80   3          }
+  81   2        }
+  82   1      } // main closes here
+  83              
+  84          void InitializeSystem(void){
+  85   1        TIMER_INIT();   // Initializing Timer
+  86   1        SERIAL_INIT();  // Initializing UART
+  87   1        SERIAL_STRING_TX("Jai Sri RAM");
+  88   1        OLED_Init();
+  89   1        OLED_SetCursor(1,0);  //Set cursor at 1st-line 0th-Position
+  90   1        OLED_DisplayString("System Initializing");
+  91   1        OLED_SetCursor(2,0);  //Set cursor at 1st-line 0th-Position
+  92   1        OLED_DisplayString("Serial Initialized");
+  93   1        powerON=0;
+  94   1        DELAY_1(2000);
+  95   1        SERIAL_STRING_TX("AT+RST");
+  96   1        SERIAL_TRANSMIT(0x0D);
+  97   1        SERIAL_TRANSMIT(0x0A);
+  98   1        WiFiInit();
+  99   1        DELAY_1(100);
+ 100   1        PcdReset();
+ 101   1        PcdAntennaOff();
+ 102   1        PcdAntennaOn();  
+ 103   1        M500PcdConfigISOType( 'A' );
+ 104   1        OLED_SetCursor(4,0);  //Set cursor at 1st-line 0th-Position
+ 105   1        OLED_DisplayString("PCD Initialized");
+ 106   1        DELAY_1(1000);
+ 107   1      }
+ 108          
+ 109          void FeedBackDelay(void){
+ 110   1        feedBack=0;
+ 111   1        delay_10ms(1);
+ 112   1        feedBack=1;
+ 113   1        delay_10ms(1);
+ 114   1      }
+ 115          
+ 116          void ReadCard(void){
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 3   
+
+ 117   1        unsigned char i=0,flag=0;
+ 118   1        unsigned int length=0;
+ 119   1        if(PcdRequest(0x52,Temp)==MI_OK){
+ 120   2          if(PcdAnticoll(UID1)==MI_OK){
+ 121   3            HEXcount=0;
+ 122   3            for(i=0;i<4;i++){
+ 123   4              HEXtoBYTE(UID1[i]);
+ 124   4            }
+ 125   3            /*OLED_SetCursor(5,0);  //Set cursor at 1st-line 0th-Position
+ 126   3            for(i=0;i<8;i++){
+ 127   3              OLED_DisplayChar(UID2[i]);
+ 128   3            }*/
+ 129   3          }
+ 130   2        }
+ 131   1        rxBytes=0;  
+ 132   1        DELAY_1(100);
+ 133   1        DELAY_1(100);
+ 134   1      }
+ 135          
+ 136          void Comparecard(void){  
+ 137   1          if(UID1[0]==CARD1[0] && UID1[1]==CARD1[1] && UID1[2]==CARD1[2] && UID1[3]==CARD1[3]){
+ 138   2          MATCHED=1;
+ 139   2          MEMBER=1;     // 74BEF266
+ 140   2          RELAY = HIGH ;
+ 141   2          OLED_SetCursor(2,0);
+ 142   2          OLED_DisplayString("Door Opened");
+ 143   2          OLED_SetCursor(4,0);
+ 144   2          OLED_DisplayString("MEMBER = 1");
+ 145   2          OLED_SetCursor(6,0);
+ 146   2          OLED_DisplayString("Uploading Data     ");
+ 147   2          DELAY_1(100);
+ 148   2          DELAY_1(100);
+ 149   2          SendDatatToCloud("GET /update?key=RJ4ZCZX8AV7V1XRL&field1=100");
+ 150   2          DELAY_1(100);
+ 151   2          RELAY = LOW;
+ 152   2          OLED_SetCursor(2,0);
+ 153   2          OLED_DisplayString("Door Closed");
+ 154   2          
+ 155   2        }
+ 156   1        if(UID1[0]==CARD2[0]&& UID1[1]==CARD2[1]&&UID1[2]==CARD2[2]&&UID1[3]==CARD2[3]){
+ 157   2          MATCHED=1;
+ 158   2          MEMBER=2;  //B7E5DCE1
+ 159   2          RELAY = HIGH ;
+ 160   2          OLED_SetCursor(2,0);
+ 161   2          OLED_DisplayString("Door Opened");
+ 162   2          OLED_SetCursor(4,0);
+ 163   2          OLED_DisplayString("MEMBER = 2");
+ 164   2          OLED_SetCursor(6,0);
+ 165   2          OLED_DisplayString("Uploading Data     ");
+ 166   2          DELAY_1(100);
+ 167   2          DELAY_1(100);
+ 168   2          SendDatatToCloud("GET /update?key=RJ4ZCZX8AV7V1XRL&field1=200");
+ 169   2          DELAY_1(100);
+ 170   2          RELAY = LOW;
+ 171   2          DELAY_1(100);
+ 172   2          OLED_SetCursor(2,0);
+ 173   2          OLED_DisplayString("Door Closed");
+ 174   2        }
+ 175   1        
+ 176   1        if(UID1[0]==CARD4[0] && UID1[1]==CARD4[1] && UID1[2]==CARD4[2] && UID1[3]==CARD4[3]){
+ 177   2          MATCHED=1;
+ 178   2          MEMBER=1;     // 74BEF266
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 4   
+
+ 179   2          RELAY = HIGH ;
+ 180   2          OLED_SetCursor(2,0);
+ 181   2          OLED_DisplayString("Door Opened");
+ 182   2          OLED_SetCursor(4,0);
+ 183   2          OLED_DisplayString("MEMBER = 4");
+ 184   2          OLED_SetCursor(6,0);
+ 185   2          OLED_DisplayString("Uploading Data     ");
+ 186   2          DELAY_1(100);
+ 187   2          DELAY_1(100);
+ 188   2          SendDatatToCloud("GET /update?key=RJ4ZCZX8AV7V1XRL&field1=400");
+ 189   2          DELAY_1(100);
+ 190   2          RELAY = LOW;
+ 191   2          OLED_SetCursor(2,0);
+ 192   2          OLED_DisplayString("Door Closed");    
+ 193   2        } 
+ 194   1      
+ 195   1        UID1[0]=0;
+ 196   1        MEMBER =  0;
+ 197   1        MATCHED = 0;
+ 198   1      }
+ 199          
+ 200          void delayPCD(void){
+ 201   1        unsigned int i=0;
+ 202   1        for (i=0;i<65000;i++);
+ 203   1        for (i=0;i<65000;i++);
+ 204   1      }
+ 205          
+ 206          void HEXtoBYTE(unsigned char c){
+ 207   1        unsigned char t;
+ 208   1        static unsigned char HEXindex=0;
+ 209   1        if(HEXcount<4){ 
+ 210   2          t=c>>4;
+ 211   2          t=t+'0';
+ 212   2          if (t>=(10+'0')){
+ 213   3          t=t+('A'-10-'0');
+ 214   3        }
+ 215   2        
+ 216   2        UID2[HEXindex]=t;
+ 217   2        //SERIAL_TRANSMIT(t); // call to your function here
+ 218   2        HEXindex++;
+ 219   2        t=c&0x0F;
+ 220   2        t=t+'0';
+ 221   2        if (t>=(10+'0')){
+ 222   3          t=t+('A'-10-'0');
+ 223   3        }
+ 224   2        //SERIAL_TRANSMIT(t); // call to your function here
+ 225   2        UID2[HEXindex]=t;
+ 226   2        HEXcount++;
+ 227   2        HEXindex++;
+ 228   2      }
+ 229   1        if(HEXcount>=4){
+ 230   2          HEXindex=0;
+ 231   2        }
+ 232   1      }
+ 233          
+ 234          void CONNECT_TO_WIFI(unsigned char* SSID, unsigned char* PWD){
+ 235   1        //unsigned char temp_ssid_char,temp_pwd_char;
+ 236   1        //unsigned int index=0,count=0,j=0,i=0; 
+ 237   1        unsigned int i=0,SSID_Length, PWD_Length,j=0;
+ 238   1        bit status=0;
+ 239   1        bit ipBIT=0;
+ 240   1        OLED_Clear();
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 5   
+
+ 241   1        SSID_Length = strlen(SSID);
+ 242   1        PWD_Length = strlen(PWD);
+ 243   1        
+ 244   1        /*SERIAL_STRING_TX("AT+CWJAP=");
+ 245   1        SERIAL_TRANSMIT('"');
+ 246   1        for(i=0;i<SSID_Length;i++){
+ 247   1          temp_ssid_char = SSID[i];
+ 248   1          SERIAL_TRANSMIT(temp_ssid_char);
+ 249   1        }
+ 250   1        SERIAL_TRANSMIT('"');
+ 251   1        SERIAL_TRANSMIT(',');
+ 252   1        SERIAL_TRANSMIT('"');
+ 253   1        for(i=0;i<PWD_Length;i++){
+ 254   1          temp_pwd_char = PWD[i];
+ 255   1          SERIAL_TRANSMIT(temp_pwd_char);
+ 256   1        }
+ 257   1        SERIAL_TRANSMIT('"');
+ 258   1        */
+ 259   1        
+ 260   1        SERIAL_STRING_TX("AT");
+ 261   1        SERIAL_TRANSMIT(0x0D);
+ 262   1        SERIAL_TRANSMIT(0x0A);
+ 263   1        
+ 264   1        OLED_SetCursor(2,0);  //Set cursor at 1st-line 0th-Position 
+ 265   1        OLED_DisplayString("Connecting......");
+ 266   1        DELAY_1(1000);
+ 267   1        
+ 268   1        SERIAL_STRING_TX("AT+CWJAP=\"Startrek\",\"Face fade12#\""); //this can also be used.
+ 269   1        SERIAL_TRANSMIT(0x0D);
+ 270   1        SERIAL_TRANSMIT(0x0A);
+ 271   1        DELAY_1(2000);
+ 272   1        
+ 273   1        //while(TwoSecFLAG!=1);
+ 274   1        SERIAL_STRING_TX("AT+CIFSR");
+ 275   1        SERIAL_TRANSMIT(0x0D);
+ 276   1        SERIAL_TRANSMIT(0x0A);  
+ 277   1        DELAY_1(100); 
+ 278   1        
+ 279   1        OLED_SetCursor(3,0);  //Set cursor at 1st-line 0th-Position 
+ 280   1        OLED_DisplayString("Connected to WiFi");
+ 281   1        DELAY_1(2000);
+ 282   1        OLED_SetCursor(4,0);  //Set cursor at 1st-line 0th-Position 
+ 283   1        OLED_DisplayString("Uploading Init Data");
+ 284   1        DELAY_1(1000);
+ 285   1        
+ 286   1        DELAY_1(100);
+ 287   1        SendDatatToCloud("GET /update?key=RJ4ZCZX8AV7V1XRL&field1=900");
+ 288   1        DELAY_1(100);
+ 289   1        
+ 290   1        rxBytes=0;
+ 291   1      } // CONNECT_TO_WIFI ends here.
+ 292          
+ 293          
+ 294          void SendDatatToCloud(unsigned char *uploadData){
+ 295   1        SERIAL_STRING_TX("AT+CIPSTART=\"TCP\",\"184.106.153.149\",80");
+ 296   1        SERIAL_TRANSMIT(0x0D);
+ 297   1        SERIAL_TRANSMIT(0x0A);
+ 298   1        DELAY_1(100);
+ 299   1        DELAY_1(100);
+ 300   1        SERIAL_STRING_TX("AT+CIPSEND=47");
+ 301   1        SERIAL_TRANSMIT(0x0D);
+ 302   1        SERIAL_TRANSMIT(0x0A);
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 6   
+
+ 303   1        DELAY_1(100);
+ 304   1        DELAY_1(100);
+ 305   1        
+ 306   1        SERIAL_STRING_TX(uploadData);
+ 307   1        SERIAL_TRANSMIT(0x0D);
+ 308   1        SERIAL_TRANSMIT(0x0A);
+ 309   1      
+ 310   1        DELAY_1(100);
+ 311   1        DELAY_1(100);
+ 312   1        SERIAL_STRING_TX("AT+CIPCLOSE");
+ 313   1        SERIAL_TRANSMIT(0x0D);
+ 314   1        SERIAL_TRANSMIT(0x0A);
+ 315   1        
+ 316   1        SERIAL_STRING_TX("AT");
+ 317   1        SERIAL_TRANSMIT(0x0D);
+ 318   1        SERIAL_TRANSMIT(0x0A);
+ 319   1        OLED_SetCursor(6,0);
+ 320   1        OLED_DisplayString("Uploaded Data      ");
+ 321   1        
+ 322   1        DELAY_1(1500);
+ 323   1      }
+ 324          
+ 325          void SERIAL_RECIEVE(void) interrupt 4{
+ 326   1        unsigned char value;
+ 327   1        if(RI){   // enter the condition when RI is one
+ 328   2          value=SBUF;  // Store SBUF to a variable
+ 329   2          RECIEVEbuffer[rxBytes]=value;
+ 330   2          
+ 331   2          if(RECIEVEbuffer[rxBytes]==0x0A && RECIEVEbuffer[rxBytes-1]==0x0D && powerON==0){  // Reading power On S
+             -equence.
+ 332   3            rxBytes=0;
+ 333   3            powerON=1;
+ 334   3          }
+ 335   2          if(RECIEVEbuffer[rxBytes]==0x0A && RECIEVEbuffer[rxBytes-1]==0x0D && powerON==1){ // To Read Regular Res
+             -ponse.
+ 336   3            //rxBytes=0;
+ 337   3            processFLAG=1;
+ 338   3          }
+ 339   2          if(rxBytes>RXBUFFSIZE && value!=0x0D && powerON==1) { // To Avoid 0x0D in the last byte at power On.
+ 340   3            rxBytes--;
+ 341   3            RECIEVEbuffer[rxBytes]=0x0D;
+ 342   3          }
+ 343   2          if(rxBytes>RXBUFFSIZE && powerON==1){ // When Buffer Overflow.
+ 344   3            rxBytes=0;
+ 345   3          }
+ 346   2          rxBytes++;    
+ 347   2          RI=0;  // Make Recieve Flag to zero
+ 348   2        }
+ 349   1        
+ 350   1      } // interrupt 4 ends here
+ 351          
+ 352          void TimerInterrupt(void) interrupt 1{
+ 353   1        static unsigned int count;
+ 354   1        TR0=0;
+ 355   1        TH0=0xF8;
+ 356   1        TL0=0xCD;
+ 357   1        TR0=1;
+ 358   1        count++;
+ 359   1        if(count==1000){
+ 360   2          count=0;
+ 361   2          P0_7=~P0_7;
+ 362   2        }
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 7   
+
+ 363   1      }
+ 364          
+ 365          void DELAY_1(unsigned int delayCount){
+ 366   1        unsigned int i,j;
+ 367   1        for(i=0;i<delayCount;i++){
+ 368   2        for(j=0;j<1000;j++);
+ 369   2        }
+ 370   1      }
+ 371          
+ 372          void WiFiInit(void){
+ 373   1      unsigned char index=0;
+ 374   1      unsigned int readyStatus=0,j=0; 
+ 375   1        OLED_SetCursor(3,0);  //Set cursor at 1st-line 0th-Position
+ 376   1        OLED_DisplayString("Initializing WiFi");
+ 377   1        
+ 378   1        WiFiReset = 0;
+ 379   1        DELAY_1(100);
+ 380   1        WiFiReset = 1;
+ 381   1        DELAY_1(100);
+ 382   1        
+ 383   1        while(processFLAG){
+ 384   2          processFLAG=0;
+ 385   2          for(index=0;index<rxBytes;index++){
+ 386   3            workingBUFFER[index]=RECIEVEbuffer[index+1];
+ 387   3          }
+ 388   2          rxBytes=0;
+ 389   2          if(strcmp(workingBUFFER,"ready")){
+ 390   3            step=1;
+ 391   3          }
+ 392   2          DELAY_1(100);
+ 393   2          if(step==1){
+ 394   3            SERIAL_STRING_TX("AT+CWMODE=1");
+ 395   3            SERIAL_TRANSMIT(0x0D);
+ 396   3            SERIAL_TRANSMIT(0x0A);  
+ 397   3            DELAY_1(100);
+ 398   3            step=2;
+ 399   3          }
+ 400   2          if(step==2){
+ 401   3            SERIAL_STRING_TX("AT+CWLAP");
+ 402   3            SERIAL_TRANSMIT(0x0D);
+ 403   3            SERIAL_TRANSMIT(0x0A);
+ 404   3            DELAY_1(2500);
+ 405   3            step=3;
+ 406   3          }
+ 407   2          if(step==3){
+ 408   3            CONNECT_TO_WIFI(SSID,PWD);
+ 409   3            DELAY_1(500);
+ 410   3            step=4;
+ 411   3            break;
+ 412   3          }
+ 413   2        }
+ 414   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1925    ----
+   CONSTANT SIZE    =    614    ----
+   XDATA SIZE       =    198      29
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      5       2
+C51 COMPILER V9.54   MAIN                                                                  04/30/2019 10:06:30 PAGE 8   
+
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
